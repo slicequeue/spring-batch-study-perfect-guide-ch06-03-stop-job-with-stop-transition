@@ -5,6 +5,7 @@ import com.slicequeue.springboot.batch.domain.Transaction;
 import com.slicequeue.springboot.batch.domain.TransactionDao;
 import com.slicequeue.springboot.batch.domain.support.TransactionDaoSupport;
 import javax.sql.DataSource;
+import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -16,8 +17,12 @@ import org.springframework.batch.item.database.JdbcCursorItemReader;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.FlatFileItemWriter;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.item.file.builder.FlatFileItemWriterBuilder;
 import org.springframework.batch.item.file.mapping.PassThroughFieldSetMapper;
+import org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor;
+import org.springframework.batch.item.file.transform.DelimitedLineAggregator;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.file.transform.FieldSet;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -134,6 +139,32 @@ public class TransactionProcessingJob {
         .build();
   }
 
+  @Bean // 3-2
+  @StepScope
+  public FlatFileItemWriter<AccountSummary> accountSummaryFileWriter(
+      @Value("#{jobParameters['summaryFile']}") Resource summaryFile) {
+
+    DelimitedLineAggregator<AccountSummary> lineAggregator = new DelimitedLineAggregator<>();
+    BeanWrapperFieldExtractor<AccountSummary> fieldExtractor = new BeanWrapperFieldExtractor<>();
+    fieldExtractor.setNames(new String[]{"accountNumber", "currentBalance"});
+    fieldExtractor.afterPropertiesSet();
+    lineAggregator.setFieldExtractor(fieldExtractor);
+
+    return new FlatFileItemWriterBuilder<AccountSummary>()
+        .name("accountSummaryFileWriter")
+        .resource(summaryFile)
+        .lineAggregator(lineAggregator)
+        .build();
+  }
+
+  @Bean // step3 - 각 계좌 번호의 현재 잔액 기준으로 CSV 파일을 생성 처리
+  public Step generateAccountSummaryStep() {
+    return this.stepBuilderFactory.get("generateAccountSummaryStep")
+        .<AccountSummary, AccountSummary>chunk(100) // 3-3
+        .reader(accountSummaryReader(null)) // 3-1 = 2-1
+        .writer(accountSummaryFileWriter(null)) // 3-2 각 레코드의 계좌번호와 현재 잔액으로 CSV 파일 생성
+        .build();
+  }
 
   public static void main(String[] args) {
     SpringApplication.run(TransactionProcessingJob.class, args);
