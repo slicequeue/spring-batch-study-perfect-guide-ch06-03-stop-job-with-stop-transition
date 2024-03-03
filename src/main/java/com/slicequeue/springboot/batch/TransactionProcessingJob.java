@@ -166,6 +166,17 @@ public class TransactionProcessingJob {
         .build();
   }
 
+  @Bean // job - transaction 작업 정의
+  public Job transactionJob() {
+    return this.jobBuilderFactory.get("transactionJob")
+        .start(importTransactionFileStep())
+        .on("STOPPED").stopAndRestart(importTransactionFileStep())
+        .from(importTransactionFileStep()).on("*").to(applyTransactionStep())
+        .from(applyTransactionStep()).next(generateAccountSummaryStep())
+        .end()
+        .build();
+  }
+
   public static void main(String[] args) {
     SpringApplication.run(TransactionProcessingJob.class, args);
   }
