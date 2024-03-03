@@ -32,6 +32,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 import com.slicequeue.springboot.batch.batch.*;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 
 @EnableBatchProcessing
@@ -53,8 +54,10 @@ public class TransactionProcessingJob {
   @Bean
   @StepScope
   public FlatFileItemReader<FieldSet> fileItemReader(
-      @Value("#{jobParameters['transactionFile']}") Resource inputFile
-  ) {
+//      @Value("#{jobParameters['transactionFile']}") Resource inputFile) {
+      @Value("#{jobParameters['transactionFile']}") String inputFilePath) {
+    Resource inputFile = new FileSystemResource(inputFilePath);
+
     return new FlatFileItemReaderBuilder<FieldSet>()
         .name("fileItemReader")
         .resource(inputFile)
@@ -93,11 +96,11 @@ public class TransactionProcessingJob {
    return new JdbcCursorItemReaderBuilder<AccountSummary>()
        .name("accountSummaryReader")
        .dataSource(dataSource)
-       .sql("SELECT ACCOUNT_NUMBER, CURRENT_BALANCE, "
+       .sql("SELECT ACCOUNT_NUMBER, CURRENT_BALANCE "
            + "FROM ACCOUNT_SUMMARY A "
            + "WHERE A.ID IN ("
-           + "  SELECT DISTINCT T.ACCOUNT_SUMMARY_ID "
-           + "  FROM TRANSACTION T) "
+           + " SELECT DISTINCT T.ACCOUNT_SUMMARY_ID"
+           + " FROM TRANSACTION T) "
            + "ORDER BY A.ACCOUNT_NUMBER")
        .rowMapper((resultSet, rowNumber) -> {
          AccountSummary summary = new AccountSummary();
@@ -142,7 +145,10 @@ public class TransactionProcessingJob {
   @Bean // 3-2
   @StepScope
   public FlatFileItemWriter<AccountSummary> accountSummaryFileWriter(
-      @Value("#{jobParameters['summaryFile']}") Resource summaryFile) {
+//      @Value("#{jobParameters['summaryFile']}") Resource summaryFile) {
+      @Value("#{jobParameters['summaryFile']}") String summaryFilePath) {
+
+    Resource summaryFile = new FileSystemResource(summaryFilePath);
 
     DelimitedLineAggregator<AccountSummary> lineAggregator = new DelimitedLineAggregator<>();
     BeanWrapperFieldExtractor<AccountSummary> fieldExtractor = new BeanWrapperFieldExtractor<>();
