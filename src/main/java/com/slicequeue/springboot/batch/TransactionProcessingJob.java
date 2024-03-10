@@ -6,11 +6,13 @@ import com.slicequeue.springboot.batch.domain.TransactionDao;
 import com.slicequeue.springboot.batch.domain.support.TransactionDaoSupport;
 import javax.sql.DataSource;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobParametersValidator;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.core.job.DefaultJobParametersValidator;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
@@ -44,6 +46,15 @@ public class TransactionProcessingJob {
 
   @Autowired
   private StepBuilderFactory stepBuilderFactory;
+
+  @Bean
+  public JobParametersValidator validator() {
+    return new DefaultJobParametersValidator(
+        new String[]{
+            "transactionFile",
+            "summaryFile"
+        }, new String[]{});
+  }
 
   @Bean // 1-1, 1-4
   @StepScope
@@ -93,22 +104,22 @@ public class TransactionProcessingJob {
   @Bean //  2-1
   @StepScope
   public JdbcCursorItemReader<AccountSummary> accountSummaryReader(DataSource dataSource) {
-   return new JdbcCursorItemReaderBuilder<AccountSummary>()
-       .name("accountSummaryReader")
-       .dataSource(dataSource)
-       .sql("SELECT ACCOUNT_NUMBER, CURRENT_BALANCE "
-           + "FROM ACCOUNT_SUMMARY A "
-           + "WHERE A.ID IN ("
-           + " SELECT DISTINCT T.ACCOUNT_SUMMARY_ID"
-           + " FROM TRANSACTION T) "
-           + "ORDER BY A.ACCOUNT_NUMBER")
-       .rowMapper((resultSet, rowNumber) -> {
-         AccountSummary summary = new AccountSummary();
-         summary.setAccountNumber(resultSet.getString("ACCOUNT_NUMBER"));
-         summary.setCurrentBalance(resultSet.getDouble("CURRENT_BALANCE"));
-         return summary;
-       })
-       .build();
+    return new JdbcCursorItemReaderBuilder<AccountSummary>()
+        .name("accountSummaryReader")
+        .dataSource(dataSource)
+        .sql("SELECT ACCOUNT_NUMBER, CURRENT_BALANCE "
+            + "FROM ACCOUNT_SUMMARY A "
+            + "WHERE A.ID IN ("
+            + " SELECT DISTINCT T.ACCOUNT_SUMMARY_ID"
+            + " FROM TRANSACTION T) "
+            + "ORDER BY A.ACCOUNT_NUMBER")
+        .rowMapper((resultSet, rowNumber) -> {
+          AccountSummary summary = new AccountSummary();
+          summary.setAccountNumber(resultSet.getString("ACCOUNT_NUMBER"));
+          summary.setCurrentBalance(resultSet.getDouble("CURRENT_BALANCE"));
+          return summary;
+        })
+        .build();
   }
 
   @Bean
@@ -136,9 +147,12 @@ public class TransactionProcessingJob {
   public Step applyTransactionStep() {
     return this.stepBuilderFactory.get("applyTransactionStep")
         .<AccountSummary, AccountSummary>chunk(100)   // 2-4 청크 사이즈 100 지정
-        .reader(accountSummaryReader(null))          // 2-1 JdbcCursorItemReader 이용하여 AccountSummary 레코드를 읽는 리더
-        .processor(transactionApplierProcessor())              // 2-2 읽은 AccountSummary 레코드 기준으로 각 계좌에 거래정보를 적용하는 프로세서
-        .writer(accountSummaryWriter(null))          // 2-3 JdbcBatchItemWriter 를 사용해 갱신된 계좌 요약 레코드를 DB에 저장
+        .reader(accountSummaryReader(
+            null))          // 2-1 JdbcCursorItemReader 이용하여 AccountSummary 레코드를 읽는 리더
+        .processor(
+            transactionApplierProcessor())              // 2-2 읽은 AccountSummary 레코드 기준으로 각 계좌에 거래정보를 적용하는 프로세서
+        .writer(accountSummaryWriter(
+            null))          // 2-3 JdbcBatchItemWriter 를 사용해 갱신된 계좌 요약 레코드를 DB에 저장
         .build();
   }
 
@@ -175,6 +189,7 @@ public class TransactionProcessingJob {
   @Bean // job - transaction 작업 정의
   public Job transactionJob() {
     return this.jobBuilderFactory.get("transactionJob")
+        .validator(validator())
         .start(importTransactionFileStep())
         .on("STOPPED").stopAndRestart(importTransactionFileStep())
         .from(importTransactionFileStep()).on("*").to(applyTransactionStep())
