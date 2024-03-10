@@ -13,6 +13,7 @@ import org.springframework.batch.core.configuration.annotation.JobBuilderFactory
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.DefaultJobParametersValidator;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.JdbcCursorItemReader;
@@ -53,7 +54,9 @@ public class TransactionProcessingJob {
         new String[]{
             "transactionFile",
             "summaryFile"
-        }, new String[]{});
+        }, new String[]{
+        "run.id"
+    });
   }
 
   @Bean // 1-1, 1-4
@@ -186,17 +189,27 @@ public class TransactionProcessingJob {
         .build();
   }
 
-  @Bean // job - transaction 작업 정의
+  @Bean
   public Job transactionJob() {
     return this.jobBuilderFactory.get("transactionJob")
-        .validator(validator())
         .start(importTransactionFileStep())
-        .on("STOPPED").stopAndRestart(importTransactionFileStep())
-        .from(importTransactionFileStep()).on("*").to(applyTransactionStep())
-        .from(applyTransactionStep()).next(generateAccountSummaryStep())
-        .end()
+        .next(applyTransactionStep())
+        .next(generateAccountSummaryStep())
         .build();
   }
+
+//  @Bean // job - transaction 작업 정의 <- 이전 transition 방식, 주석 처리
+//  public Job transactionJob() {
+//    return this.jobBuilderFactory.get("transactionJob")
+//        .validator(validator())
+//        .incrementer(new RunIdIncrementer())
+//        .start(importTransactionFileStep())
+//        .on("STOPPED").stopAndRestart(importTransactionFileStep())
+//        .from(importTransactionFileStep()).on("*").to(applyTransactionStep())
+//        .from(applyTransactionStep()).next(generateAccountSummaryStep())
+//        .end()
+//        .build();
+//  }
 
   public static void main(String[] args) {
     SpringApplication.run(TransactionProcessingJob.class, args);
