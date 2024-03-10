@@ -15,7 +15,7 @@ public class TransactionDaoSupport extends JdbcTemplate implements TransactionDa
   @Override
   public List<Transaction> getTransactionsByAccountNumber(String accountNumber) {
     return query(
-        "select i.id, t.timestamp, t.amount "
+        "select t.id, t.timestamp, t.amount "
             + "from transaction t inner join account_summary a on "
             + "a.id = t.account_summary_id "
             + "where a.account_number = ?",
